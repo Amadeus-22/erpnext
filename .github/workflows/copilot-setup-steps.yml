@@ -1,0 +1,93 @@
+# Environment preinstalled for the GitHub Copilot coding agent before it starts working.
+# Docs: https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-environment
+#
+# The job name MUST stay `copilot-setup-steps` or Copilot ignores this file.
+#
+# Scope, deliberately: this installs the *static* toolchain (Python, ruff, node, pre-commit) — not a
+# full bench. A bench install (clone frappe + pip + yarn + assets + reinstall ~1000 DocTypes into
+# MariaDB) takes 20+ minutes and would routinely exceed the agent's setup budget. The agent is
+# therefore expected to write code + tests and let the real integration suite run on the PR via
+# server-tests-mariadb.yml. Set the `bench` input to true on a manual dispatch to smoke-test the
+# heavy path; it reuses .github/helper/{start-db,install}.sh so there is no second copy of that logic.
+
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+    inputs:
+      bench:
+        description: "Also build a full bench (slow, ~20+ min) to validate the heavy path"
+        type: boolean
+        default: false
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    name: Copilot setup steps
+    # Copilot supports Ubuntu x64 and Windows 64-bit runners only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v6
+
+      # requires-python in pyproject.toml is >=3.14; matches the py3.14 CI image.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: yarn
+          cache-dependency-path: banking/yarn.lock
+
+      # ruff version is pinned in .pre-commit-config.yaml — read it from there instead of
+      # hardcoding a second version that can drift away from the gate that actually blocks PRs.
+      - name: Install lint toolchain
+        run: |
+          ruff_rev=$(python - <<'PY'
+          import re, pathlib
+          cfg = pathlib.Path(".pre-commit-config.yaml").read_text()
+          print(re.search(r"ruff-pre-commit\s*\n\s*rev:\s*v?([\d.]+)", cfg).group(1))
+          PY
+          )
+          python -m pip install --upgrade pip
+          python -m pip install "ruff==${ruff_rev}" pre-commit
+          ruff --version
+
+      - name: Prime pre-commit hook cache
+        run: pre-commit install-hooks
+
+      # Same first gate as server-tests-mariadb.yml: proves the toolchain works and the tree parses.
+      # The Postgres-compat check is left to pre-commit, which scopes it to changed files.
+      - name: Sanity check
+        run: python -m compileall -fq erpnext
+
+      - name: Start DB
+        if: ${{ inputs.bench }}
+        run: bash "${GITHUB_WORKSPACE}/.github/helper/start-db.sh"
+        env:
+          ERPNEXT_CI_USER: runner
+          CI_DB_DATADIR: /home/runner/db-data
+
+      - name: Build bench
+        if: ${{ inputs.bench }}
+        run: bash "${GITHUB_WORKSPACE}/.github/helper/install.sh"
+        env:
+          DB: mariadb
+          TYPE: server
+          DB_HOST: 127.0.0.1
+          DB_USER_HOST: "%"
+          ERPNEXT_CI_USER: runner
+          ERPNEXT_CI_NON_ROOT: "1"
