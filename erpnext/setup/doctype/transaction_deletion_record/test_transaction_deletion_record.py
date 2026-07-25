@@ -199,7 +199,13 @@ class TestTransactionDeletionRecord(ERPNextTestSuite):
 		original_doctype_names = [row.doctype_name for row in tdr.doctypes_to_delete]
 		self.assertGreater(len(original_doctype_names), 0)
 
-		csv_content = "doctype_name,company_field,child_doctypes\nDocType,,\nDefinitely Missing DocType,,\n"
+		protected_doctype = "DocType"
+		nonexistent_doctype = "Nonexistent Doctype For Import Test"
+		csv_content = (
+			"doctype_name,company_field,child_doctypes\n"
+			f"{protected_doctype},,\n"
+			f"{nonexistent_doctype},,\n"
+		)
 		result = tdr.import_to_delete_template_method(csv_content)
 
 		self.assertEqual(result["imported"], 0)
