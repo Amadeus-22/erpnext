@@ -27,4 +27,13 @@ jobs:
       - name: Check commit titles
         run: |
           npm install @commitlint/cli @commitlint/config-conventional
-          npx commitlint --verbose --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
+          # Only lint commits that actually change files; empty commits (e.g. planning
+          # placeholders created by automation) do not need a conventional-commit prefix.
+          failed=0
+          while IFS= read -r sha; do
+            if git diff-tree --no-commit-id -r "$sha" | grep -q .; then
+              git log -1 --format="%B" "$sha" | npx commitlint --verbose || failed=1
+            fi
+          done < <(git log --format="%H" \
+            ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
+          exit "$failed"
