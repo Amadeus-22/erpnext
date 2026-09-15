@@ -1,3 +1,4 @@
+import os
 import sys
 from urllib.parse import urlparse
 
@@ -41,7 +42,9 @@ def contains_documentation_link(body: str) -> bool:
 
 
 def check_pull_request(number: str) -> "tuple[int, str]":
-	response = requests.get(f"https://api.github.com/repos/frappe/erpnext/pulls/{number}")
+	api_url = os.getenv("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+	repository = os.getenv("GITHUB_REPOSITORY", "frappe/erpnext")
+	response = requests.get(f"{api_url}/repos/{repository}/pulls/{number}")
 	if not response.ok:
 		return 1, "Pull Request Not Found! ⚠️"
 
