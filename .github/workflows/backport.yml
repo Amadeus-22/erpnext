@@ -12,6 +12,8 @@ jobs:
   main:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
       - name: Checkout Actions
         uses: actions/checkout@v6
@@ -22,8 +24,9 @@ jobs:
       - name: Install Actions
         run: npm install --production --prefix ./actions
       - name: Run backport
+        if: ${{ env.RELEASE_TOKEN != '' }}
         uses: ./actions/backport
         with:
-          token: ${{secrets.RELEASE_TOKEN}}
+          token: ${{ env.RELEASE_TOKEN }}
           labelsToAdd: "backport"
           title: "{{originalTitle}}"
