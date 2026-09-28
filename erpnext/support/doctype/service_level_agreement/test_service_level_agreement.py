@@ -6,6 +6,7 @@ import json
 import frappe
 from frappe.utils import flt
 
+from erpnext.crm.doctype.opportunity.test_opportunity import make_opportunity
 from erpnext.support.doctype.issue_priority.test_issue_priority import make_priorities
 from erpnext.support.doctype.service_level_agreement.service_level_agreement import (
 	get_service_level_agreement_fields,
@@ -352,6 +353,59 @@ class TestServiceLevelAgreement(ERPNextTestSuite):
 		lead.save()
 
 		lead.reload()
+		self.assertEqual(lead.agreement_status, "Fulfilled")
+
+	def test_sla_on_lead_status_set_by_linked_document(self):
+		# Creating an Opportunity moves the Lead to "Opportunity" through set_status(update=True),
+		# which writes the status with db_set and therefore skips validate.
+		create_service_level_agreement(
+			default_service_level_agreement=1,
+			holiday_list="__Test Holiday List",
+			entity_type=None,
+			entity=None,
+			response_time=14400,
+			resolution_time=21600,
+			doctype="Lead",
+			sla_fulfilled_on=[{"status": "Converted"}],
+			pause_sla_on=[{"status": "Opportunity"}],
+		)
+		creation = datetime.datetime(2020, 3, 4, 4, 0)
+		lead = make_lead(creation, index=5, company="_Test Support SLA")
+
+		frappe.flags.current_time = datetime.datetime(2020, 3, 4, 4, 15)
+		make_opportunity(opportunity_from="Lead", lead=lead.name, company="_Test Support SLA")
+
+		lead.reload()
+		self.assertEqual(lead.status, "Opportunity")
+		self.assertEqual(lead.on_hold_since, frappe.flags.current_time)
+
+	def test_sla_on_lead_converted_by_customer(self):
+		# Creating a Customer from a Lead sets the status with frappe.db.set_value.
+		create_service_level_agreement(
+			default_service_level_agreement=1,
+			holiday_list="__Test Holiday List",
+			entity_type=None,
+			entity=None,
+			response_time=14400,
+			resolution_time=21600,
+			doctype="Lead",
+			sla_fulfilled_on=[{"status": "Converted"}],
+		)
+		creation = datetime.datetime(2020, 3, 4, 4, 0)
+		lead = make_lead(creation, index=6, company="_Test Support SLA")
+
+		frappe.flags.current_time = datetime.datetime(2020, 3, 4, 5, 0)
+		frappe.get_doc(
+			{
+				"doctype": "Customer",
+				"customer_name": "_Test Customer From SLA Lead",
+				"lead_name": lead.name,
+			}
+		).insert(ignore_permissions=True)
+
+		lead.reload()
+		self.assertEqual(lead.status, "Converted")
+		self.assertEqual(lead.sla_resolution_date, frappe.flags.current_time)
 		self.assertEqual(lead.agreement_status, "Fulfilled")
 
 	def test_service_level_agreement_filters(self):

@@ -28,6 +28,9 @@ from erpnext.controllers.website_list_for_contact import (
 	add_role_for_portal_user,
 	link_portal_users_to_contacts,
 )
+from erpnext.support.doctype.service_level_agreement.service_level_agreement import (
+	set_status_and_apply_sla,
+)
 from erpnext.utilities.transaction_base import TransactionBase
 
 from .mapper import (
@@ -336,7 +339,7 @@ class Customer(TransactionBase):
 		"""If Customer created from Lead, update lead status to "Converted"
 		update Customer link in Quotation, Opportunity"""
 		if self.lead_name:
-			frappe.db.set_value("Lead", self.lead_name, "status", "Converted")
+			set_lead_status(self.lead_name, "Converted")
 
 	def link_address_and_contact(self):
 		linked_documents = {
@@ -445,7 +448,7 @@ class Customer(TransactionBase):
 
 		delete_contact_and_address("Customer", self.name)
 		if self.lead_name:
-			frappe.db.set_value("Lead", self.lead_name, "status", "Interested")
+			set_lead_status(self.lead_name, "Interested")
 
 	def before_rename(self, olddn, newdn, merge=False):
 		if merge:
@@ -885,3 +888,8 @@ def get_customer_primary(doctype: str, txt: str, searchfield: str, start: int, p
 		query = query.select(type_doctype.email_id)
 
 	return query.run()
+
+
+def set_lead_status(lead_name: str, status: str):
+	"""Set the Lead status without saving it, still applying any SLA on Lead."""
+	set_status_and_apply_sla(frappe.get_doc("Lead", lead_name), status)

@@ -281,7 +281,11 @@ class StatusUpdater(Document):
 
 			self.status = new_status
 			if update:
-				self.db_set("status", new_status, update_modified=update_modified)
+				from erpnext.support.doctype.service_level_agreement.service_level_agreement import (
+					set_status_and_apply_sla,
+				)
+
+				set_status_and_apply_sla(self, new_status, update_modified=update_modified)
 
 	def get_status(self):
 		"""

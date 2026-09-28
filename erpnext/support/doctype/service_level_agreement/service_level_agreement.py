@@ -522,6 +522,25 @@ def apply(doc, method=None):
 	process_sla(doc, sla)
 
 
+def set_status_and_apply_sla(doc, status, update_modified=True):
+	"""Write `status` directly to the database, like `db_set`, and apply the SLA transition it causes.
+
+	SLA status handling normally runs in `validate`. Linked documents that change the status
+	without saving `doc` must go through here, or the transition is lost for good: on the next
+	save the stored status already matches, so `handle_status_change` sees no change.
+	"""
+	fieldnames = [f for f in doc.meta.get_valid_columns() if f not in ("status", "modified")]
+	before = {f: doc.get(f) for f in fieldnames}
+
+	doc.status = status
+	# Must run before the write: handle_status_change reads the previous status from the database.
+	apply(doc)
+
+	values = {f: doc.get(f) for f in fieldnames if doc.get(f) != before[f]}
+	values["status"] = status
+	doc.db_set(values, update_modified=update_modified)
+
+
 def remove_sla_if_applied(doc):
 	doc.service_level_agreement = None
 	doc.response_by = None
